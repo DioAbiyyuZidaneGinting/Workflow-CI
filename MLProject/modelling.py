@@ -173,9 +173,12 @@ def run_modelling(args):
     }
 
     mlflow.sklearn.autolog()          # autolog: params, metrics, model
-    mlflow.set_experiment(EXPERIMENT_NAME)
 
-    with mlflow.start_run(run_name=RUN_NAME) as run:
+    # Jika dipanggil via `mlflow run` CLI, run sudah aktif — jangan buat baru
+    if mlflow.active_run() is None:
+        mlflow.set_experiment(EXPERIMENT_NAME)
+
+    with mlflow.start_run() as run:
         log.info(f"MLflow Run ID: {run.info.run_id}")
 
         # Train
