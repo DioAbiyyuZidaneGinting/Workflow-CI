@@ -7,6 +7,7 @@ Dataset : telco_churn_preprocessed.csv
 
 import argparse
 import logging
+import os
 import warnings
 import numpy as np
 import pandas as pd
@@ -174,41 +175,43 @@ def run_modelling(args):
 
     mlflow.sklearn.autolog()          # autolog: params, metrics, model
 
-    # Jika dipanggil via `mlflow run` CLI, run sudah aktif — jangan buat baru
-    if mlflow.active_run() is None:
-        mlflow.set_experiment(EXPERIMENT_NAME)
+    # Cek apakah dipanggil via `mlflow run` CLI
+    # (CLI meng-set MLFLOW_RUN_ID di environment sebelum menjalankan script)
+    mlflow_run_id = os.environ.get("MLFLOW_RUN_ID")
 
-    with mlflow.start_run() as run:
-        log.info(f"MLflow Run ID: {run.info.run_id}")
-
-        # Train
+    if mlflow_run_id:
+        # === MODE CLI: run sudah dibuat oleh `mlflow run`, jangan buat lagi ===
+        log.info(f"MLflow Run ID (dari CLI): {mlflow_run_id}")
         model = train(X_train, y_train, params)
-
-        # Evaluate
         metrics, y_pred, y_prob = evaluate(model, X_test, y_test)
-
-        # Log params & metrics
         mlflow.log_params(params)
         mlflow.log_metrics(metrics)
-
-        # Log artefak
         mlflow.log_artifact(save_confusion_matrix(y_test, y_pred))
         mlflow.log_artifact(save_roc_curve(y_test, y_prob))
         mlflow.log_artifact(save_feature_importance(model, feat_names))
-
-        # Log dataset info
         mlflow.log_param("train_size", len(X_train))
         mlflow.log_param("test_size",  len(X_test))
         mlflow.log_param("n_features", len(feat_names))
-
-        # Log model
-        mlflow.sklearn.log_model(model, "random_forest_model",
-                                 registered_model_name="telco-churn-rf")
-        log.info(f"Model logged to MLflow: {EXPERIMENT_NAME}/{RUN_NAME}")
-
-    log.info("*" * 55)
-    log.info("  MODELLING SELESAI")
-    log.info("*" * 55)
+        mlflow.sklearn.log_model(model, "random_forest_model")
+        log.info("Model logged ke run CLI.")
+    else:
+        # === MODE STANDALONE: jalankan langsung tanpa CLI ===
+        mlflow.set_experiment(EXPERIMENT_NAME)
+        with mlflow.start_run(run_name=RUN_NAME) as run:
+            log.info(f"MLflow Run ID: {run.info.run_id}")
+            model = train(X_train, y_train, params)
+            metrics, y_pred, y_prob = evaluate(model, X_test, y_test)
+            mlflow.log_params(params)
+            mlflow.log_metrics(metrics)
+            mlflow.log_artifact(save_confusion_matrix(y_test, y_pred))
+            mlflow.log_artifact(save_roc_curve(y_test, y_prob))
+            mlflow.log_artifact(save_feature_importance(model, feat_names))
+            mlflow.log_param("train_size", len(X_train))
+            mlflow.log_param("test_size",  len(X_test))
+            mlflow.log_param("n_features", len(feat_names))
+            mlflow.sklearn.log_model(model, "random_forest_model",
+                                     registered_model_name="telco-churn-rf")
+            log.info(f"Model logged to MLflow: {EXPERIMENT_NAME}/{RUN_NAME}")
 
 
 if __name__ == "__main__":
